@@ -53,14 +53,21 @@ final class MenuTests: XCTestCase {
         let light = DishScore(name: "Salmon", protein: 2, fiber: 1.5, saturatedFat: 0.4, mollusk: 0.1, mushroom: 0)
         let heavy = DishScore(name: "Cheese fries", protein: 0.4, fiber: 0.2, saturatedFat: 1.8, mollusk: 0, mushroom: 0)
         let oysters = DishScore(name: "Oysters", protein: 1.6, fiber: 0.2, saturatedFat: 0.3, mollusk: 0.9, mushroom: 0)
-        let result = OrderRanking.pick(from: [heavy, oysters, light])
-        XCTAssertEqual(result?.pick.name, "Salmon")
-        XCTAssertEqual(result?.alternatives.map(\.name), ["Cheese fries"])
-        XCTAssertTrue(result?.reason.contains("protein") == true)
+        let result = OrderRanking.rank(from: [heavy, oysters, light])
+        XCTAssertEqual(result.dishes.map(\.name), ["Salmon", "Cheese fries"])
+        XCTAssertEqual(result.skipped.map(\.name), ["Oysters"])
     }
 
     func testBlocksMollusksAndMushrooms() {
         let only = DishScore(name: "Mushroom ragout", protein: 1, fiber: 1.4, saturatedFat: 0.5, mollusk: 0, mushroom: 0.8)
-        XCTAssertNil(OrderRanking.pick(from: [only]))
+        let result = OrderRanking.rank(from: [only])
+        XCTAssertTrue(result.dishes.isEmpty)
+        XCTAssertEqual(result.skipped.map(\.name), ["Mushroom ragout"])
+    }
+
+    func testBandsAreIndependentOfEachOther() {
+        XCTAssertEqual(DishScore.band(1.99), "High")
+        XCTAssertEqual(DishScore.band(1.2), "Moderate")
+        XCTAssertEqual(DishScore.band(0.4), "Low")
     }
 }

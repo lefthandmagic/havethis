@@ -6,7 +6,8 @@ enum OrderEngine {
         if dishes.isEmpty { throw OrderError.noDishes }
         let scored = try await client.scoreDishes(dishes)
         if scored.isEmpty { throw OrderError.scoringFailed }
-        guard let result = OrderRanking.pick(from: scored) else { throw OrderError.allBlocked }
+        let result = OrderRanking.rank(from: scored)
+        if result.dishes.isEmpty && result.skipped.isEmpty { throw OrderError.scoringFailed }
         return result
     }
 }

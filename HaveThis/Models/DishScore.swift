@@ -1,6 +1,6 @@
 import Foundation
 
-struct DishScore: Equatable {
+struct DishScore: Equatable, Codable {
     var name: String
     var protein: Double
     var fiber: Double
@@ -16,12 +16,33 @@ struct DishScore: Equatable {
     var blocked: Bool {
         mollusk >= 0.55 || mushroom >= 0.55
     }
+
+    var skipNote: String? {
+        switch (mollusk >= 0.55, mushroom >= 0.55) {
+        case (true, true): return "Mollusk and mushroom"
+        case (true, false): return "Mollusk"
+        case (false, true): return "Mushroom"
+        case (false, false): return nil
+        }
+    }
+
+    /// Jev's scale is 0 low, 1 moderate, 2 high.
+    static func band(_ value: Double) -> String {
+        switch Int(value.rounded()) {
+        case ..<1: return "Low"
+        case 1: return "Moderate"
+        default: return "High"
+        }
+    }
+
+    static func number(_ value: Double) -> String {
+        String(format: "%.1f", value)
+    }
 }
 
-struct OrderResult: Equatable {
-    var pick: DishScore
-    var alternatives: [DishScore]
-    var reason: String
+struct OrderResult: Equatable, Codable {
+    var dishes: [DishScore]
+    var skipped: [DishScore]
 }
 
 enum OrderError: LocalizedError {

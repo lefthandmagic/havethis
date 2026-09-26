@@ -7,12 +7,17 @@ final class OrderModel: ObservableObject {
     enum Phase {
         case idle
         case working(String)
-        case result(OrderResult)
         case failed(String)
     }
 
     @Published var phase: Phase = .idle
     @Published var source: MenuImageSource?
+    @Published var history: [MenuSearch]
+    @Published var path = NavigationPath()
+
+    init() {
+        history = MenuHistory.load()
+    }
 
     var cameraAvailable: Bool {
         UIImagePickerController.isSourceTypeAvailable(.camera)
@@ -24,7 +29,12 @@ final class OrderModel: ObservableObject {
             let lines = try MenuScanner.lines(from: image)
             phase = .working("Scoring dishes")
             let result = try await OrderEngine.order(from: lines)
-            phase = .result(result)
+            let search = MenuSearch(id: UUID(), createdAt: Date(), result: result)
+            history.insert(search, at: 0)
+            if history.count > 40 { history = Array(history.prefix(40)) }
+            MenuHistory.save(history)
+            phase = .idle
+            path.append(search.id)
         } catch let error as OrderError {
             phase = .failed(error.localizedDescription)
         } catch {
@@ -36,23 +46,29 @@ final class OrderModel: ObservableObject {
 struct OrderView: View {
     @StateObject private var model = OrderModel()
 
-    private let paper = Color(red: 0.965, green: 0.957, blue: 0.933)
-    private let ink = Color(red: 0.180, green: 0.280, blue: 0.220)
+    private var paper: Color { HaveThisColor.paper }
+    private var ink: Color { HaveThisColor.ink }
 
     var body: some View {
-        ZStack {
-            paper.ignoresSafeArea()
-            VStack(spacing: 28) {
-                Spacer(minLength: 12)
-                content
-                Spacer(minLength: 12)
-                if case .working = model.phase {
-                    EmptyView()
-                } else {
-                    actionButtons
+        NavigationStack(path: $model.path) {
+            ZStack {
+                paper.ignoresSafeArea()
+                VStack(spacing: 28) {
+                    content
+                    if case .working = model.phase {
+                        EmptyView()
+                    } else {
+                        actionButtons
+                    }
+                }
+                .padding(28)
+            }
+            .toolbar(.hidden, for: .navigationBar)
+            .navigationDestination(for: UUID.self) { id in
+                if let search = model.history.first(where: { $0.id == id }) {
+                    RankedMenuView(result: search.result, createdAt: search.createdAt)
                 }
             }
-            .padding(28)
         }
         .fullScreenCover(item: $model.source) { source in
             picker(for: source)
@@ -86,50 +102,53 @@ struct OrderView: View {
     private var content: some View {
         switch model.phase {
         case .idle:
-            VStack(spacing: 10) {
+            VStack(alignment: .leading, spacing: 18) {
                 Text("HaveThis")
                     .font(.system(size: 40, weight: .bold))
                     .foregroundStyle(ink)
-                Text("Take a photo of a menu, or choose one from your library.")
-                    .font(.body)
-                    .foregroundStyle(ink.opacity(0.7))
-                    .multilineTextAlignment(.center)
+                if model.history.isEmpty {
+                    Text("Take a photo of a menu, or choose one from your library.")
+                        .font(.body)
+                        .foregroundStyle(ink.opacity(0.7))
+                } else {
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 16) {
+                            ForEach(model.history) { search in
+                                Button {
+                                    model.path.append(search.id)
+                                } label: {
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text(search.title)
+                                            .font(.body.weight(.semibold))
+                                            .foregroundStyle(ink)
+                                            .multilineTextAlignment(.leading)
+                                            .lineLimit(2)
+                                        Text(search.createdAt.formatted(date: .abbreviated, time: .shortened))
+                                            .font(.subheadline)
+                                            .foregroundStyle(ink.opacity(0.65))
+                                        Text("\(search.result.dishes.count) ranked")
+                                            .font(.subheadline)
+                                            .foregroundStyle(ink.opacity(0.65))
+                                    }
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
+                }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         case .working(let label):
             VStack(spacing: 16) {
+                Spacer()
                 ProgressView()
                     .tint(ink)
                 Text(label)
                     .font(.title3.weight(.semibold))
                     .foregroundStyle(ink)
+                Spacer()
             }
-        case .result(let result):
-            VStack(alignment: .leading, spacing: 18) {
-                Text("Have this")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(ink.opacity(0.65))
-                Text(result.pick.name)
-                    .font(.system(size: 34, weight: .bold))
-                    .foregroundStyle(ink)
-                    .fixedSize(horizontal: false, vertical: true)
-                Text(result.reason)
-                    .font(.body)
-                    .foregroundStyle(ink.opacity(0.75))
-                if !result.alternatives.isEmpty {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Also fine")
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(ink.opacity(0.65))
-                        ForEach(result.alternatives, id: \.name) { dish in
-                            Text(dish.name)
-                                .font(.body)
-                                .foregroundStyle(ink)
-                        }
-                    }
-                    .padding(.top, 8)
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
         case .failed(let message):
             Text(message)
                 .font(.title3)
