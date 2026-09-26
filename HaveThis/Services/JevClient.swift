@@ -12,14 +12,9 @@ struct JevClient {
         for (index, line) in capped.enumerated() {
             questions["dish_\(index)"] = [
                 "type": "noul",
-                "instructions": [
-                    "line": line,
-                    "question": "Is `line` a specific dish or drink a customer can order? Yes for food and drinks. No for section titles, prices, addresses, hours, allergen legends, and the restaurant name."
-                ],
-                "criteria": [
-                    "true": "A specific orderable dish or drink",
-                    "false": "Not something to order"
-                ]
+                "instructions": "Is \"\(line)\" a specific dish or drink a customer can order? Yes for food and drinks. No for section titles, prices, addresses, hours, allergen legends, and the restaurant name.",
+                "yes": "A specific orderable dish or drink",
+                "no": "Not something to order"
             ]
         }
 
@@ -73,10 +68,7 @@ struct JevClient {
     private func scoreQuestion(_ name: String, _ question: String) -> [String: Any] {
         [
             "type": "score",
-            "instructions": [
-                "dish": name,
-                "question": question
-            ],
+            "instructions": question,
             "criteria": ["Low", "Moderate", "High"]
         ]
     }
@@ -84,23 +76,42 @@ struct JevClient {
     private func flagQuestion(_ name: String, _ ingredient: String) -> [String: Any] {
         [
             "type": "noul",
-            "instructions": [
-                "dish": name,
-                "question": "Does the dish `dish` contain or likely contain \(ingredient)?"
-            ],
-            "criteria": [
-                "true": "The dish includes it",
-                "false": "The dish does not include it"
-            ]
+            "instructions": "Does \(name) contain or likely contain \(ingredient)?",
+            "yes": "The dish includes it",
+            "no": "The dish does not include it"
         ]
     }
 
+    /// Their playground sends this id. `jev-latest` is rejected by the same host.
+    private static let model = "typesafe/jev-1.13"
+    /// The playground refuses more than 8 questions in one call.
+    private static let batchSize = 8
+
     private func evaluate(state: Any, questions: [String: Any]) async throws -> [String: JevAnswer] {
+        let ids = Array(questions.keys)
+        var merged: [String: JevAnswer] = [:]
+        var start = 0
+        while start < ids.count {
+            let end = min(start + Self.batchSize, ids.count)
+            var batch: [String: Any] = [:]
+            for id in ids[start..<end] {
+                batch[id] = questions[id]
+            }
+            let part = try await evaluateBatch(state: state, questions: batch)
+            for (id, answer) in part {
+                merged[id] = answer
+            }
+            start = end
+        }
+        return merged
+    }
+
+    private func evaluateBatch(state: Any, questions: [String: Any]) async throws -> [String: JevAnswer] {
         let key = (apiKey ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         guard !key.isEmpty, !key.contains("$(") else { throw OrderError.missingKey }
 
         let body: [String: Any] = [
-            "model": "jev-latest",
+            "model": Self.model,
             "state": state,
             "questions": questions
         ]
@@ -109,6 +120,7 @@ struct JevClient {
         request.httpMethod = "POST"
         request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("HaveThis/1.0", forHTTPHeaderField: "User-Agent")
         request.httpBody = payload
         request.timeoutInterval = 45
 
@@ -124,7 +136,12 @@ struct JevClient {
                 try await Task.sleep(nanoseconds: 2_000_000_000)
                 return try await send(request, allowRetry: false)
             }
-            guard (200..<300).contains(http.statusCode) else { throw OrderError.scoringFailed }
+            if !(200..<300).contains(http.statusCode) {
+                throw OrderError.provider(Self.serverMessage(in: data) ?? OrderError.scoringFailed.localizedDescription)
+            }
+            if let message = Self.failureMessage(in: data) {
+                throw OrderError.provider(message)
+            }
             return data
         } catch let error as OrderError {
             throw error
@@ -133,13 +150,33 @@ struct JevClient {
         }
     }
 
+    private static func serverMessage(in data: Data) -> String? {
+        guard
+            let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+            let message = json["message"] as? String
+        else { return nil }
+        let trimmed = message.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    private static func failureMessage(in data: Data) -> String? {
+        guard
+            let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+            let code = json["code"] as? NSNumber,
+            code.intValue != 0
+        else { return nil }
+        return serverMessage(in: data) ?? OrderError.scoringFailed.localizedDescription
+    }
+
     private func parse(_ data: Data) throws -> [String: JevAnswer] {
         guard
             let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
         else { throw OrderError.scoringFailed }
 
+        let wrapped = (json["data"] as? [String: Any])?["result"] as? [String: Any]
         let answers = (json["answers"] as? [String: Any])
             ?? ((json["result"] as? [String: Any])?["answers"] as? [String: Any])
+            ?? (wrapped?["answers"] as? [String: Any])
         guard let answers else { throw OrderError.scoringFailed }
 
         var parsed: [String: JevAnswer] = [:]

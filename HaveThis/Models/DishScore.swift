@@ -30,6 +30,7 @@ enum OrderError: LocalizedError {
     case allBlocked
     case missingKey
     case scoringFailed
+    case provider(String)
 
     var errorDescription: String? {
         switch self {
@@ -43,6 +44,8 @@ enum OrderError: LocalizedError {
             return "This build is missing the scoring key."
         case .scoringFailed:
             return "Scoring failed. Check the connection and try again."
+        case .provider(let message):
+            return message
         }
     }
 }
