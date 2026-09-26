@@ -1,0 +1,17 @@
+.DS_Store
+build/
+DerivedData/
+.derivedData/
+*.xcresult
+xcuserdata/
+*.xcuserstate
+.build/
+Pods/
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/test_output/
+.secrets-local/
+*.ipa
+*.xcarchive
+.env
+HaveThis.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/

@@ -1,0 +1,51 @@
+opt_out_usage
+default_platform(:ios)
+
+platform :ios do
+  BUNDLE_ID = "com.praveenmurugesan.HaveThis"
+
+  def connect_key
+    app_store_connect_api_key(
+      key_id: ENV.fetch("APPSTORE_KEY_ID"),
+      issuer_id: ENV.fetch("APPSTORE_ISSUER_ID"),
+      key_content: ENV.fetch("APPSTORE_PRIVATE_KEY"),
+      is_key_content_base64: false
+    )
+  end
+
+  lane :ensure_app do
+    connect_key
+
+    bundle = Spaceship::ConnectAPI::BundleId.all.find { |b| b.identifier == BUNDLE_ID }
+    if bundle.nil?
+      UI.message("Creating bundle ID #{BUNDLE_ID}")
+      Spaceship::ConnectAPI::BundleId.create(
+        name: "HaveThis",
+        identifier: BUNDLE_ID,
+        platform: "IOS"
+      )
+    else
+      UI.success("Bundle ID already exists")
+    end
+
+    app = Spaceship::ConnectAPI::App.find(BUNDLE_ID)
+    if app.nil?
+      UI.important("Create the App Store Connect record once (API keys cannot CREATE apps):")
+      UI.important("https://appstoreconnect.apple.com → My Apps → + → iOS")
+      UI.important("Name: HaveThis  ·  Bundle ID: #{BUNDLE_ID}  ·  SKU: havethis-001")
+    else
+      UI.success("App Store Connect app already exists")
+    end
+  end
+
+  lane :fetch_profile do
+    connect_key
+    sigh(
+      app_identifier: BUNDLE_ID,
+      team_id: "DNQVHANQBU",
+      force: true,
+      output_path: ENV.fetch("RUNNER_TEMP"),
+      skip_certificate_verification: true
+    )
+  end
+end

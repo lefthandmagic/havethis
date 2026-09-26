@@ -1,0 +1,68 @@
+name: HaveThis
+options:
+  bundleIdPrefix: com.praveenmurugesan
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: 5.0
+    IPHONEOS_DEPLOYMENT_TARGET: 17.0
+packages: {}
+targets:
+  HaveThis:
+    type: application
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - HaveThis
+    info:
+      path: HaveThis/Resources/Info.plist
+      properties:
+        CFBundleDisplayName: HaveThis
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        ITSAppUsesNonExemptEncryption: false
+        JevAPIKey: $(JEV_API_KEY)
+        NSCameraUsageDescription: HaveThis reads the menu text on your phone. The photo stays on the device.
+        UILaunchStoryboardName: LaunchScreen
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.praveenmurugesan.HaveThis
+        INFOPLIST_KEY_CFBundleDisplayName: HaveThis
+        MARKETING_VERSION: "1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: DNQVHANQBU
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        TARGETED_DEVICE_FAMILY: "1"
+        JEV_API_KEY: ""
+    dependencies: []
+
+  HaveThisTests:
+    type: bundle.unit-test
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - HaveThisTests
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: com.praveenmurugesan.HaveThisTests
+    dependencies:
+      - target: HaveThis
+
+schemes:
+  HaveThis:
+    build:
+      targets:
+        HaveThis: all
+        HaveThisTests: [test]
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - HaveThisTests
+    archive:
+      config: Release
