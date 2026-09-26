@@ -219,7 +219,8 @@ jobs:
           fastlane pilot upload \
             --ipa "$RUNNER_TEMP/export/HaveThis.ipa" \
             --api_key_path "$API_KEY_PATH" \
-            --skip_waiting_for_build_processing true \
+            --skip_waiting_for_build_processing false \
+            --groups "Test group" \
             --distribute_external false
 
       - name: Upload IPA artifact

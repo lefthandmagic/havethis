@@ -1,3 +1,4 @@
+import PhotosUI
 import SwiftUI
 import UIKit
 
@@ -11,7 +12,7 @@ final class OrderModel: ObservableObject {
     }
 
     @Published var phase: Phase = .idle
-    @Published var showCamera = false
+    @Published var source: MenuImageSource?
 
     var cameraAvailable: Bool {
         UIImagePickerController.isSourceTypeAvailable(.camera)
@@ -48,20 +49,36 @@ struct OrderView: View {
                 if case .working = model.phase {
                     EmptyView()
                 } else {
-                    shootButton
+                    actionButtons
                 }
             }
             .padding(28)
         }
-        .fullScreenCover(isPresented: $model.showCamera) {
+        .fullScreenCover(item: $model.source) { source in
+            picker(for: source)
+                .ignoresSafeArea()
+        }
+    }
+
+    @ViewBuilder
+    private func picker(for source: MenuImageSource) -> some View {
+        switch source {
+        case .camera:
             CameraPicker(
                 onImage: { image in
-                    model.showCamera = false
+                    model.source = nil
                     Task { await model.analyze(image) }
                 },
-                onCancel: { model.showCamera = false }
+                onCancel: { model.source = nil }
             )
-            .ignoresSafeArea()
+        case .library:
+            LibraryPicker(
+                onImage: { image in
+                    model.source = nil
+                    Task { await model.analyze(image) }
+                },
+                onCancel: { model.source = nil }
+            )
         }
     }
 
@@ -73,7 +90,7 @@ struct OrderView: View {
                 Text("HaveThis")
                     .font(.system(size: 40, weight: .bold))
                     .foregroundStyle(ink)
-                Text("Point the camera at a menu.")
+                Text("Take a photo of a menu, or choose one from your library.")
                     .font(.body)
                     .foregroundStyle(ink.opacity(0.7))
                     .multilineTextAlignment(.center)
@@ -121,28 +138,88 @@ struct OrderView: View {
         }
     }
 
-    private var shootButton: some View {
-        Button {
-            model.showCamera = true
-        } label: {
-            Text(buttonTitle)
-                .font(.headline)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 16)
+    private var actionButtons: some View {
+        VStack(spacing: 12) {
+            if model.cameraAvailable {
+                Button {
+                    model.source = .camera
+                } label: {
+                    Text("Take a photo")
+                        .font(.headline)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 16)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(ink)
+            }
+            Button {
+                model.source = .library
+            } label: {
+                Text("Choose a photo")
+                    .font(.headline)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 16)
+            }
+            .buttonStyle(.bordered)
+            .tint(ink)
         }
-        .buttonStyle(.borderedProminent)
-        .tint(ink)
-        .disabled(!model.cameraAvailable)
+    }
+}
+
+enum MenuImageSource: Identifiable {
+    case camera
+    case library
+
+    var id: String {
+        switch self {
+        case .camera: return "camera"
+        case .library: return "library"
+        }
+    }
+}
+
+struct LibraryPicker: UIViewControllerRepresentable {
+    var onImage: (UIImage) -> Void
+    var onCancel: () -> Void
+
+    func makeUIViewController(context: Context) -> PHPickerViewController {
+        var config = PHPickerConfiguration()
+        config.filter = .images
+        config.selectionLimit = 1
+        let picker = PHPickerViewController(configuration: config)
+        picker.delegate = context.coordinator
+        return picker
     }
 
-    private var buttonTitle: String {
-        switch model.phase {
-        case .idle:
-            return model.cameraAvailable ? "Take a photo" : "Camera unavailable"
-        case .result, .failed:
-            return "Another menu"
-        case .working:
-            return ""
+    func updateUIViewController(_ uiViewController: PHPickerViewController, context: Context) {}
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(onImage: onImage, onCancel: onCancel)
+    }
+
+    final class Coordinator: NSObject, PHPickerViewControllerDelegate {
+        let onImage: (UIImage) -> Void
+        let onCancel: () -> Void
+
+        init(onImage: @escaping (UIImage) -> Void, onCancel: @escaping () -> Void) {
+            self.onImage = onImage
+            self.onCancel = onCancel
+        }
+
+        func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
+            guard let provider = results.first?.itemProvider, provider.canLoadObject(ofClass: UIImage.self) else {
+                onCancel()
+                return
+            }
+            provider.loadObject(ofClass: UIImage.self) { object, _ in
+                DispatchQueue.main.async {
+                    if let image = object as? UIImage {
+                        self.onImage(image)
+                    } else {
+                        self.onCancel()
+                    }
+                }
+            }
         }
     }
 }

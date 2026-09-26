@@ -24,6 +24,31 @@ final class MenuTests: XCTestCase {
         XCTAssertEqual(kept, ["Burrata", "Grilled salmon, fennel"])
     }
 
+    func testDoesNotCollapseThePageIntoOneLine() {
+        let blocks = (0..<5).map { index in
+            TextBlock(
+                text: "Dish \(index)",
+                rect: CGRect(x: 0.1, y: 0.8 - CGFloat(index) * 0.08, width: 0.4, height: 0.03)
+            )
+        }
+        XCTAssertEqual(MenuLayout.lines(from: blocks).count, 5)
+    }
+
+    func testKeepsNumberedAllCapsDishes() {
+        let kept = MenuLineFilter.candidates([
+            "VEG APPETIZERS",
+            "111 65(PANEER/GOBI) € 10.00",
+            "Deep-fried Paneer/cauliflower florets dipped in a spicy hot and tangy marinade",
+            "MEDHU VADA Soft, crispy lentil doughnut shaped fritters € 7.00",
+            "The Chettiars, also known as the Nagarathar community, have a history that dates back centuries. They are believed to have originated as traders and financiers, and their prominence grew during the medieval and colonial periods."
+        ])
+        XCTAssertEqual(kept, [
+            "65(PANEER/GOBI)",
+            "Deep-fried Paneer/cauliflower florets dipped in a spicy hot and tangy marinade",
+            "MEDHU VADA"
+        ])
+    }
+
     func testRanksProteinAndFiberAboveAHeavyPlate() {
         let light = DishScore(name: "Salmon", protein: 2, fiber: 1.5, saturatedFat: 0.4, mollusk: 0.1, mushroom: 0)
         let heavy = DishScore(name: "Cheese fries", protein: 0.4, fiber: 0.2, saturatedFat: 1.8, mollusk: 0, mushroom: 0)

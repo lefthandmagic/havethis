@@ -7,7 +7,9 @@ enum MenuLineFilter {
         "dranken", "voorgerecht", "voorgerechten", "hoofdgerecht", "hoofdgerechten",
         "nagerecht", "nagerechten", "bijgerecht", "bijgerechten", "lunch", "dinner",
         "ontbijt", "menu", "allergen", "allergens", "allergenen", "sides", "side",
-        "snacks", "snack", "voorgerechtjes"
+        "snacks", "snack", "voorgerechtjes",
+        "appetizer", "appetizers", "veg appetizers", "vegetarian appetizers",
+        "non-veg appetizers", "non veg appetizers"
     ]
 
     private static let weekdays = [
@@ -33,13 +35,21 @@ enum MenuLineFilter {
         guard !text.isEmpty else { return nil }
 
         if let range = text.range(
-            of: #"(?:€|eur)?\s*\d{1,4}(?:[.,]\d{1,2}|,-)?\s*$"#,
+            of: #"(?:(?:€|eur)\s*\d{1,4}(?:[.,]\d{1,2})?|\d{1,4}[.,]\d{1,2}|\d{1,4},-)\s*$"#,
             options: [.regularExpression, .caseInsensitive]
         ) {
             text.removeSubrange(range)
         }
+        text = text.replacingOccurrences(
+            of: #"^\d{2,4}\s+"#,
+            with: "",
+            options: .regularExpression
+        )
+        if let heading = headingPrefix(in: text) {
+            text = heading
+        }
         text = text.trimmingCharacters(in: CharacterSet(charactersIn: ".-–—|•·: "))
-        guard text.count >= 3, text.count <= 80 else { return nil }
+        guard text.count >= 3, text.count <= 160 else { return nil }
         guard text.rangeOfCharacter(from: .letters) != nil else { return nil }
 
         let digits = text.filter(\.isNumber).count
@@ -49,6 +59,36 @@ enum MenuLineFilter {
         if headers.contains(lower) { return nil }
         if isJunk(lower) { return nil }
         return text
+    }
+
+    /// Keep an ALL-CAPS dish name when a description was glued on the same line.
+    private static func headingPrefix(in text: String) -> String? {
+        let words = text.split(whereSeparator: \.isWhitespace).map(String.init)
+        var kept: [String] = []
+        for word in words {
+            if isHeadingWord(word) {
+                kept.append(word)
+                continue
+            }
+            break
+        }
+        guard !kept.isEmpty else { return nil }
+        let prefix = kept.joined(separator: " ")
+        guard prefix.count >= 3, prefix.count < text.count else { return nil }
+        let letters = prefix.filter(\.isLetter)
+        let upper = letters.filter(\.isUppercase).count
+        guard !letters.isEmpty, upper * 2 >= letters.count else { return nil }
+        return prefix
+    }
+
+    private static func isHeadingWord(_ word: String) -> Bool {
+        let letters = word.filter(\.isLetter)
+        if letters.isEmpty { return !word.isEmpty }
+        let upper = letters.filter(\.isUppercase).count
+        let lower = letters.count - upper
+        if upper == 0 || upper < lower { return false }
+        if letters.count >= 4 && upper <= lower { return false }
+        return true
     }
 
     private static func isJunk(_ lower: String) -> Bool {

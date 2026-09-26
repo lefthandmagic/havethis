@@ -13,7 +13,8 @@ enum MenuLayout {
             .map { TextBlock(text: $0.text.trimmingCharacters(in: .whitespacesAndNewlines), rect: $0.rect) }
             .filter { !$0.text.isEmpty }
             .sorted { lhs, rhs in
-                if abs(lhs.rect.midY - rhs.rect.midY) > 1 {
+                let slack = max(lhs.rect.height, rhs.rect.height) * 0.45
+                if abs(lhs.rect.midY - rhs.rect.midY) > slack {
                     return lhs.rect.midY > rhs.rect.midY
                 }
                 return lhs.rect.minX < rhs.rect.minX
@@ -22,8 +23,11 @@ enum MenuLayout {
         var rows: [[TextBlock]] = []
         for block in sorted {
             if let index = rows.indices.last {
-                let band = max(rows[index][0].rect.height, block.rect.height, 12)
-                if abs(rows[index][0].rect.midY - block.rect.midY) < band * 0.65 {
+                let row = rows[index]
+                let rowMid = row.map(\.rect.midY).reduce(0, +) / CGFloat(row.count)
+                let rowHeight = row.map(\.rect.height).max() ?? block.rect.height
+                let tolerance = max(rowHeight, block.rect.height) * 0.65
+                if abs(rowMid - block.rect.midY) < tolerance {
                     rows[index].append(block)
                     continue
                 }
