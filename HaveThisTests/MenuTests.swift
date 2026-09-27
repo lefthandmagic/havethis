@@ -70,4 +70,19 @@ final class MenuTests: XCTestCase {
         XCTAssertEqual(DishScore.band(1.2), "Moderate")
         XCTAssertEqual(DishScore.band(0.4), "Low")
     }
+
+    func testOldHistoryDecodesWithoutTiming() throws {
+        let json = """
+        [{"id":"00000000-0000-0000-0000-000000000001","createdAt":"2026-09-26T12:00:00Z","result":{"dishes":[],"skipped":[]}}]
+        """.data(using: .utf8)!
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let searches = try decoder.decode([MenuSearch].self, from: json)
+        XCTAssertNil(searches.first?.timing)
+    }
+
+    func testTimingLineSplitsPhotoAndJev() {
+        let timing = ScanTiming(photoSeconds: 0.8, jevSeconds: 11.4, serverSeconds: 8.9)
+        XCTAssertEqual(timing.line, "Photo 0.8s · Jev 11s (8.9s on their side)")
+    }
 }

@@ -6,7 +6,7 @@ import UIKit
 final class OrderModel: ObservableObject {
     enum Phase {
         case idle
-        case working(String)
+        case working(WorkStatus)
         case failed(String)
     }
 
@@ -24,12 +24,47 @@ final class OrderModel: ObservableObject {
     }
 
     func analyze(_ image: UIImage) async {
-        phase = .working("Reading the menu")
+        let photoStarted = Date()
+        phase = .working(WorkStatus(
+            title: "Reading the menu",
+            detail: "On this phone",
+            photoSeconds: nil,
+            photoStarted: photoStarted,
+            jevSeconds: 0,
+            serverSeconds: 0,
+            jevStarted: nil
+        ))
         do {
             let lines = try MenuScanner.lines(from: image)
-            phase = .working("Scoring dishes")
-            let result = try await OrderEngine.order(from: lines)
-            let search = MenuSearch(id: UUID(), createdAt: Date(), result: result)
+            let photoSeconds = Date().timeIntervalSince(photoStarted)
+            phase = .working(WorkStatus(
+                title: "Finding dishes",
+                detail: "Sending the menu to Jev",
+                photoSeconds: photoSeconds,
+                photoStarted: nil,
+                jevSeconds: 0,
+                serverSeconds: 0,
+                jevStarted: Date()
+            ))
+            let (result, stats) = try await OrderEngine.order(from: lines) { update in
+                Task { @MainActor in
+                    self.phase = .working(WorkStatus(
+                        title: update.title,
+                        detail: update.detail,
+                        photoSeconds: photoSeconds,
+                        photoStarted: nil,
+                        jevSeconds: update.completedRoundTrip,
+                        serverSeconds: update.completedServer,
+                        jevStarted: update.callStarted
+                    ))
+                }
+            }
+            let timing = ScanTiming(
+                photoSeconds: photoSeconds,
+                jevSeconds: stats.roundTrip,
+                serverSeconds: stats.server
+            )
+            let search = MenuSearch(id: UUID(), createdAt: Date(), result: result, timing: timing)
             history.insert(search, at: 0)
             if history.count > 40 { history = Array(history.prefix(40)) }
             MenuHistory.save(history)
@@ -41,6 +76,16 @@ final class OrderModel: ObservableObject {
             phase = .failed(OrderError.scoringFailed.localizedDescription)
         }
     }
+}
+
+struct WorkStatus: Equatable {
+    var title: String
+    var detail: String
+    var photoSeconds: Double?
+    var photoStarted: Date?
+    var jevSeconds: Double
+    var serverSeconds: Double
+    var jevStarted: Date?
 }
 
 struct OrderView: View {
@@ -66,7 +111,7 @@ struct OrderView: View {
             .toolbar(.hidden, for: .navigationBar)
             .navigationDestination(for: UUID.self) { id in
                 if let search = model.history.first(where: { $0.id == id }) {
-                    RankedMenuView(result: search.result, createdAt: search.createdAt)
+                    RankedMenuView(result: search.result, createdAt: search.createdAt, timing: search.timing)
                 }
             }
         }
@@ -139,15 +184,9 @@ struct OrderView: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        case .working(let label):
-            VStack(spacing: 16) {
-                Spacer()
-                ProgressView()
-                    .tint(ink)
-                Text(label)
-                    .font(.title3.weight(.semibold))
-                    .foregroundStyle(ink)
-                Spacer()
+        case .working(let status):
+            TimelineView(.periodic(from: .now, by: 0.1)) { context in
+                workingStatus(status, now: context.date)
             }
         case .failed(let message):
             Text(message)
@@ -155,6 +194,48 @@ struct OrderView: View {
                 .foregroundStyle(ink)
                 .multilineTextAlignment(.center)
         }
+    }
+
+    private func workingStatus(_ status: WorkStatus, now: Date) -> some View {
+        let photo = status.photoSeconds ?? status.photoStarted.map { now.timeIntervalSince($0) } ?? 0
+        let jev = status.jevSeconds + (status.jevStarted.map { now.timeIntervalSince($0) } ?? 0)
+        return VStack(alignment: .leading, spacing: 22) {
+            ProgressView()
+                .tint(ink)
+            VStack(alignment: .leading, spacing: 6) {
+                Text(status.title)
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(ink)
+                Text(status.detail)
+                    .font(.body)
+                    .foregroundStyle(ink.opacity(0.7))
+            }
+            VStack(alignment: .leading, spacing: 8) {
+                clockRow("Photo", ScanTiming.clock(photo))
+                clockRow("Jev", status.photoSeconds == nil ? "—" : ScanTiming.clock(jev))
+                if status.serverSeconds > 0.05 {
+                    clockRow("Their side", ScanTiming.clock(status.serverSeconds))
+                }
+            }
+            Text("Photo is reading the picture on this phone. Jev is the round trip. Their side is the time Jev reports.")
+                .font(.footnote)
+                .foregroundStyle(ink.opacity(0.55))
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    private func clockRow(_ label: String, _ value: String) -> some View {
+        HStack {
+            Text(label)
+                .frame(width: 92, alignment: .leading)
+            Text(value)
+                .monospacedDigit()
+            Spacer()
+        }
+        .font(.body.weight(.semibold))
+        .foregroundStyle(ink)
     }
 
     private var actionButtons: some View {

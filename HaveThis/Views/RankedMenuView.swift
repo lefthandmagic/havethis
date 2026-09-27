@@ -3,6 +3,7 @@ import SwiftUI
 struct RankedMenuView: View {
     var result: OrderResult
     var createdAt: Date
+    var timing: ScanTiming? = nil
 
     private let ink = HaveThisColor.ink
 
@@ -12,6 +13,12 @@ struct RankedMenuView: View {
                 Text(createdAt.formatted(date: .abbreviated, time: .shortened))
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(ink.opacity(0.65))
+                if let timing {
+                    Text(timing.line)
+                        .font(.subheadline)
+                        .foregroundStyle(ink.opacity(0.65))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
                 Text("Protein, fiber, and saturated fat, each scored on its own. 0 is low, 2 is high.")
                     .font(.body)
                     .foregroundStyle(ink.opacity(0.75))

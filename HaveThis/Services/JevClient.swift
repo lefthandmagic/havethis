@@ -4,9 +4,12 @@ struct JevClient {
     var session: URLSession = .shared
     var apiKey: String? = Bundle.main.object(forInfoDictionaryKey: "JevAPIKey") as? String
 
-    func keepDishes(_ lines: [String]) async throws -> [String] {
+    func keepDishes(
+        _ lines: [String],
+        progress: (@Sendable (JevProgress) -> Void)? = nil
+    ) async throws -> (dishes: [String], stats: JevCallStats) {
         let capped = Array(lines.prefix(40))
-        guard !capped.isEmpty else { return [] }
+        guard !capped.isEmpty else { return ([], JevCallStats()) }
 
         var questions: [String: Any] = [:]
         for (index, line) in capped.enumerated() {
@@ -18,16 +21,27 @@ struct JevClient {
             ]
         }
 
-        let answers = try await evaluate(state: ["lines": capped], questions: questions)
-        return capped.enumerated().compactMap { index, line in
-            let yes = answers["dish_\(index)"]?.noul ?? 0
-            return yes >= 0.6 ? line : nil
-        }
+        let (answers, stats) = try await evaluate(
+            state: ["lines": capped],
+            questions: questions,
+            label: "Finding dishes",
+            progress: progress
+        )
+        return (
+            capped.enumerated().compactMap { index, line in
+                let yes = answers["dish_\(index)"]?.noul ?? 0
+                return yes >= 0.6 ? line : nil
+            },
+            stats
+        )
     }
 
-    func scoreDishes(_ names: [String]) async throws -> [DishScore] {
+    func scoreDishes(
+        _ names: [String],
+        progress: (@Sendable (JevProgress) -> Void)? = nil
+    ) async throws -> (scores: [DishScore], stats: JevCallStats) {
         let capped = Array(names.prefix(20))
-        guard !capped.isEmpty else { return [] }
+        guard !capped.isEmpty else { return ([], JevCallStats()) }
 
         var questions: [String: Any] = [:]
         for (index, name) in capped.enumerated() {
@@ -47,8 +61,14 @@ struct JevClient {
             questions["\(index)_mushroom"] = flagQuestion(name, "mushrooms")
         }
 
-        let answers = try await evaluate(state: ["dishes": capped], questions: questions)
-        return capped.enumerated().compactMap { index, name in
+        let (answers, stats) = try await evaluate(
+            state: ["dishes": capped],
+            questions: questions,
+            label: "Scoring dishes",
+            progress: progress
+        )
+        return (
+            capped.enumerated().compactMap { index, name in
             guard
                 let protein = answers["\(index)_protein"]?.score,
                 let fiber = answers["\(index)_fiber"]?.score,
@@ -62,7 +82,9 @@ struct JevClient {
                 mollusk: answers["\(index)_mollusk"]?.noul ?? 0,
                 mushroom: answers["\(index)_mushroom"]?.noul ?? 0
             )
-        }
+        },
+            stats
+        )
     }
 
     private func scoreQuestion(_ name: String, _ question: String) -> [String: Any] {
@@ -87,26 +109,53 @@ struct JevClient {
     /// The playground refuses more than 8 questions in one call.
     private static let batchSize = 8
 
-    private func evaluate(state: Any, questions: [String: Any]) async throws -> [String: JevAnswer] {
+    private func evaluate(
+        state: Any,
+        questions: [String: Any],
+        label: String,
+        progress: (@Sendable (JevProgress) -> Void)?
+    ) async throws -> (answers: [String: JevAnswer], stats: JevCallStats) {
         let ids = Array(questions.keys)
+        let batches = max(1, Int(ceil(Double(ids.count) / Double(Self.batchSize))))
         var merged: [String: JevAnswer] = [:]
+        var stats = JevCallStats()
         var start = 0
+        var batchIndex = 0
         while start < ids.count {
             let end = min(start + Self.batchSize, ids.count)
             var batch: [String: Any] = [:]
             for id in ids[start..<end] {
                 batch[id] = questions[id]
             }
-            let part = try await evaluateBatch(state: state, questions: batch)
+            batchIndex += 1
+            let callStarted = Date()
+            progress?(JevProgress(
+                title: label,
+                detail: "Call \(batchIndex) of \(batches)",
+                completedRoundTrip: stats.roundTrip,
+                completedServer: stats.server,
+                callStarted: callStarted
+            ))
+            let (part, server) = try await evaluateBatch(state: state, questions: batch)
+            stats.roundTrip += Date().timeIntervalSince(callStarted)
+            stats.server += server
+            stats.calls += 1
             for (id, answer) in part {
                 merged[id] = answer
             }
+            progress?(JevProgress(
+                title: label,
+                detail: "Call \(batchIndex) of \(batches)",
+                completedRoundTrip: stats.roundTrip,
+                completedServer: stats.server,
+                callStarted: nil
+            ))
             start = end
         }
-        return merged
+        return (merged, stats)
     }
 
-    private func evaluateBatch(state: Any, questions: [String: Any]) async throws -> [String: JevAnswer] {
+    private func evaluateBatch(state: Any, questions: [String: Any]) async throws -> (answers: [String: JevAnswer], server: TimeInterval) {
         let key = (apiKey ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         guard !key.isEmpty, !key.contains("$(") else { throw OrderError.missingKey }
 
@@ -125,7 +174,7 @@ struct JevClient {
         request.timeoutInterval = 45
 
         let data = try await send(request, allowRetry: true)
-        return try parse(data)
+        return (try parse(data), Self.serverSeconds(in: data))
     }
 
     private func send(_ request: URLRequest, allowRetry: Bool) async throws -> Data {
@@ -189,6 +238,37 @@ struct JevClient {
         }
         return parsed
     }
+
+    /// Jev reports its own processing time as `elapsedMs` on the result.
+    private static func serverSeconds(in data: Data) -> TimeInterval {
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return 0 }
+        let result = ((json["data"] as? [String: Any])?["result"] as? [String: Any])
+            ?? (json["result"] as? [String: Any])
+        guard let ms = result?["elapsedMs"] as? NSNumber else { return 0 }
+        return ms.doubleValue / 1000
+    }
+}
+
+struct JevCallStats: Sendable {
+    var roundTrip: TimeInterval = 0
+    var server: TimeInterval = 0
+    var calls: Int = 0
+
+    static func + (lhs: JevCallStats, rhs: JevCallStats) -> JevCallStats {
+        JevCallStats(
+            roundTrip: lhs.roundTrip + rhs.roundTrip,
+            server: lhs.server + rhs.server,
+            calls: lhs.calls + rhs.calls
+        )
+    }
+}
+
+struct JevProgress: Sendable {
+    var title: String
+    var detail: String
+    var completedRoundTrip: TimeInterval
+    var completedServer: TimeInterval
+    var callStarted: Date?
 }
 
 struct JevAnswer {

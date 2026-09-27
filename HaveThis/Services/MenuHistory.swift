@@ -1,9 +1,29 @@
 import Foundation
 
+struct ScanTiming: Codable, Equatable {
+    var photoSeconds: Double
+    var jevSeconds: Double
+    var serverSeconds: Double
+
+    static func clock(_ seconds: Double) -> String {
+        if seconds < 10 { return String(format: "%.1fs", seconds) }
+        return String(format: "%.0fs", seconds)
+    }
+
+    var line: String {
+        var text = "Photo \(Self.clock(photoSeconds)) · Jev \(Self.clock(jevSeconds))"
+        if serverSeconds > 0.05 {
+            text += " (\(Self.clock(serverSeconds)) on their side)"
+        }
+        return text
+    }
+}
+
 struct MenuSearch: Identifiable, Codable, Equatable {
     var id: UUID
     var createdAt: Date
     var result: OrderResult
+    var timing: ScanTiming?
 
     var title: String {
         result.dishes.first?.name ?? result.skipped.first?.name ?? "Menu"
