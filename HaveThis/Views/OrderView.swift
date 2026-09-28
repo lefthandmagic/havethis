@@ -62,7 +62,8 @@ final class OrderModel: ObservableObject {
             let timing = ScanTiming(
                 photoSeconds: photoSeconds,
                 jevSeconds: stats.roundTrip,
-                serverSeconds: stats.server
+                serverSeconds: stats.server,
+                calls: stats.calls
             )
             let search = MenuSearch(id: UUID(), createdAt: Date(), result: result, timing: timing)
             history.insert(search, at: 0)

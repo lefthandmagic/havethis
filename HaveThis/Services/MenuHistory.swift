@@ -4,6 +4,7 @@ struct ScanTiming: Codable, Equatable {
     var photoSeconds: Double
     var jevSeconds: Double
     var serverSeconds: Double
+    var calls: Int? = nil
 
     static func clock(_ seconds: Double) -> String {
         if seconds < 10 { return String(format: "%.1fs", seconds) }
@@ -14,6 +15,9 @@ struct ScanTiming: Codable, Equatable {
         var text = "Photo \(Self.clock(photoSeconds)) · Jev \(Self.clock(jevSeconds))"
         if serverSeconds > 0.05 {
             text += " (\(Self.clock(serverSeconds)) on their side)"
+        }
+        if let calls, calls > 0 {
+            text += calls == 1 ? " · 1 call" : " · \(calls) calls"
         }
         return text
     }

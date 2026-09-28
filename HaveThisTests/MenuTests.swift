@@ -85,4 +85,15 @@ final class MenuTests: XCTestCase {
         let timing = ScanTiming(photoSeconds: 0.8, jevSeconds: 11.4, serverSeconds: 8.9)
         XCTAssertEqual(timing.line, "Photo 0.8s · Jev 11s (8.9s on their side)")
     }
+
+    func testTimingLineCountsCalls() {
+        let timing = ScanTiming(photoSeconds: 0.8, jevSeconds: 1.4, serverSeconds: 0.9, calls: 2)
+        XCTAssertEqual(timing.line, "Photo 0.8s · Jev 1.4s (0.9s on their side) · 2 calls")
+    }
+
+    func testOversizedBatchMessageIsRecognized() {
+        XCTAssertTrue(JevClient.needsSmallerBatch("maximum of 8 questions"))
+        XCTAssertTrue(JevClient.needsSmallerBatch("max_tokens_exceeded"))
+        XCTAssertFalse(JevClient.needsSmallerBatch("Scoring failed. Check the connection and try again."))
+    }
 }
