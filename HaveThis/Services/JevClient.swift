@@ -106,69 +106,12 @@ struct JevClient {
 
     /// Their playground sends this id. `jev-latest` is rejected by the same host.
     private static let model = "typesafe/jev-1.13"
-    /// The API answers every question in a request together. A menu fits in one call.
-    /// Eight was the old playground cap, used only if a call is rejected as too big.
-    private static let fallbackBatch = 8
-    private static let fallbackConcurrency = 4
+    /// One fat request was slower here than several small ones. Eight matches the playground cap.
+    private static let batchSize = 8
+    /// Overlap the waits. Wall clock is the slowest wave, not the sum.
+    private static let maxInFlight = 6
 
     private func evaluate(
-        state: Any,
-        questions: [String: Any],
-        label: String,
-        progress: (@Sendable (JevProgress) -> Void)?
-    ) async throws -> (answers: [String: JevAnswer], stats: JevCallStats) {
-        do {
-            return try await evaluateOnce(
-                state: state,
-                questions: questions,
-                label: label,
-                progress: progress
-            )
-        } catch let error as OrderError {
-            guard case .provider(let message) = error,
-                  Self.needsSmallerBatch(message),
-                  questions.count > Self.fallbackBatch
-            else { throw error }
-            return try await evaluateInChunks(
-                state: state,
-                questions: questions,
-                label: label,
-                progress: progress
-            )
-        }
-    }
-
-    private func evaluateOnce(
-        state: Any,
-        questions: [String: Any],
-        label: String,
-        progress: (@Sendable (JevProgress) -> Void)?
-    ) async throws -> (answers: [String: JevAnswer], stats: JevCallStats) {
-        let callStarted = Date()
-        progress?(JevProgress(
-            title: label,
-            detail: "1 call · \(questions.count) questions",
-            completedRoundTrip: 0,
-            completedServer: 0,
-            callStarted: callStarted
-        ))
-        let (part, server) = try await evaluateBatch(state: state, questions: questions)
-        let stats = JevCallStats(
-            roundTrip: Date().timeIntervalSince(callStarted),
-            server: server,
-            calls: 1
-        )
-        progress?(JevProgress(
-            title: label,
-            detail: "1 call · \(questions.count) questions",
-            completedRoundTrip: stats.roundTrip,
-            completedServer: stats.server,
-            callStarted: nil
-        ))
-        return (part, stats)
-    }
-
-    private func evaluateInChunks(
         state: Any,
         questions: [String: Any],
         label: String,
@@ -178,7 +121,7 @@ struct JevClient {
         var slices: [[String: Any]] = []
         var start = 0
         while start < ids.count {
-            let end = min(start + Self.fallbackBatch, ids.count)
+            let end = min(start + Self.batchSize, ids.count)
             var batch: [String: Any] = [:]
             for id in ids[start..<end] {
                 batch[id] = questions[id]
@@ -188,21 +131,26 @@ struct JevClient {
         }
 
         let callStarted = Date()
+        let total = slices.count
+        func detail(_ done: Int) -> String {
+            total == 1 ? "1 call · \(questions.count) questions" : "\(done) of \(total) calls back"
+        }
         progress?(JevProgress(
             title: label,
-            detail: "\(slices.count) calls at once",
+            detail: detail(0),
             completedRoundTrip: 0,
             completedServer: 0,
             callStarted: callStarted
         ))
 
         var merged: [String: JevAnswer] = [:]
-        var server: TimeInterval = 0
+        var slowest: TimeInterval = 0
+        var done = 0
         try await withThrowingTaskGroup(of: (answers: [String: JevAnswer], server: TimeInterval).self) { group in
             var next = 0
             var inFlight = 0
             func enqueue() {
-                while inFlight < Self.fallbackConcurrency, next < slices.count {
+                while inFlight < Self.maxInFlight, next < slices.count {
                     let batch = slices[next]
                     next += 1
                     inFlight += 1
@@ -216,37 +164,27 @@ struct JevClient {
                 for (id, answer) in part.answers {
                     merged[id] = answer
                 }
-                server += part.server
+                slowest = max(slowest, part.server)
+                done += 1
                 inFlight -= 1
+                let finished = done == total
+                progress?(JevProgress(
+                    title: label,
+                    detail: detail(done),
+                    completedRoundTrip: finished ? Date().timeIntervalSince(callStarted) : 0,
+                    completedServer: slowest,
+                    callStarted: finished ? nil : callStarted
+                ))
                 enqueue()
             }
         }
 
         let stats = JevCallStats(
             roundTrip: Date().timeIntervalSince(callStarted),
-            server: server,
-            calls: slices.count
+            server: slowest,
+            calls: total
         )
-        progress?(JevProgress(
-            title: label,
-            detail: "\(slices.count) calls at once",
-            completedRoundTrip: stats.roundTrip,
-            completedServer: stats.server,
-            callStarted: nil
-        ))
         return (merged, stats)
-    }
-
-    static func needsSmallerBatch(_ message: String) -> Bool {
-        let text = message.lowercased()
-        if text.contains("max_tokens") || (text.contains("token") && text.contains("exceed")) {
-            return true
-        }
-        let aboutQuestions = text.contains("question")
-        if aboutQuestions && (text.contains("limit") || text.contains("maximum") || text.contains("too many") || text.contains("at most") || text.contains("more than")) {
-            return true
-        }
-        return aboutQuestions && text.contains("8")
     }
 
     private func evaluateBatch(state: Any, questions: [String: Any]) async throws -> (answers: [String: JevAnswer], server: TimeInterval) {
@@ -265,7 +203,7 @@ struct JevClient {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("HaveThis/1.0", forHTTPHeaderField: "User-Agent")
         request.httpBody = payload
-        request.timeoutInterval = 60
+        request.timeoutInterval = 25
 
         let data = try await send(request, allowRetry: true)
         return (try parse(data), Self.serverSeconds(in: data))

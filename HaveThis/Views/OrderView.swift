@@ -218,7 +218,7 @@ struct OrderView: View {
                     clockRow("Their side", ScanTiming.clock(status.serverSeconds))
                 }
             }
-            Text("Photo is reading the picture on this phone. Jev is the round trip. Their side is the time Jev reports.")
+            Text("Photo is reading the picture on this phone. Jev is the wait. Their side is the slowest call Jev reported.")
                 .font(.footnote)
                 .foregroundStyle(ink.opacity(0.55))
                 .fixedSize(horizontal: false, vertical: true)
