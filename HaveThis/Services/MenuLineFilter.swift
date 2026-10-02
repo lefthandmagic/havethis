@@ -22,12 +22,35 @@ enum MenuLineFilter {
         var seen = Set<String>()
         var kept: [String] = []
         for raw in lines {
-            guard let cleaned = clean(raw) else { continue }
+            for piece in separateDishes(raw) {
+            guard let cleaned = clean(piece) else { continue }
             let key = cleaned.lowercased()
             guard seen.insert(key).inserted else { continue }
             kept.append(cleaned)
+            }
         }
         return kept
+    }
+
+    /// "Oysters 18 Mussels 16 Frites 7" is three dishes the camera read as one line.
+    static func separateDishes(_ line: String) -> [String] {
+        let pattern = #"(?i)(?:€\s*)?\d{1,3}(?:[.,]\d{1,2}|,-)?(?=\s+\p{Lu})"#
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return [line] }
+        let ns = line as NSString
+        let matches = regex.matches(in: line, range: NSRange(location: 0, length: ns.length))
+        guard !matches.isEmpty else { return [line] }
+        var parts: [String] = []
+        var start = 0
+        for match in matches {
+            let end = match.range.location + match.range.length
+            let piece = ns.substring(with: NSRange(location: start, length: end - start))
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            if !piece.isEmpty { parts.append(piece) }
+            start = end
+        }
+        let tail = ns.substring(from: start).trimmingCharacters(in: .whitespacesAndNewlines)
+        if !tail.isEmpty { parts.append(tail) }
+        return parts.count > 1 ? parts : [line]
     }
 
     static func clean(_ line: String) -> String? {
@@ -35,7 +58,7 @@ enum MenuLineFilter {
         guard !text.isEmpty else { return nil }
 
         if let range = text.range(
-            of: #"(?:(?:€|eur)\s*\d{1,4}(?:[.,]\d{1,2})?|\d{1,4}[.,]\d{1,2}|\d{1,4},-)\s*$"#,
+            of: #"(?:(?:€|eur)\s*\d{1,4}(?:[.,]\d{1,2})?|\d{1,4}[.,]\d{1,2}|\d{1,4},-|\d{1,3})\s*$"#,
             options: [.regularExpression, .caseInsensitive]
         ) {
             text.removeSubrange(range)

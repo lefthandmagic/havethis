@@ -28,9 +28,13 @@ struct MenuSearch: Identifiable, Codable, Equatable {
     var createdAt: Date
     var result: OrderResult
     var timing: ScanTiming?
+    /// Set when the scan is named, or when someone renames it. Missing on older saves.
+    var title: String?
 
-    var title: String {
-        result.dishes.first?.name ?? result.skipped.first?.name ?? "Menu"
+    var displayTitle: String {
+        let trimmed = title?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !trimmed.isEmpty { return trimmed }
+        return MenuTitle.fromDishes(result.dishes)
     }
 }
 

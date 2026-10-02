@@ -24,6 +24,43 @@ final class MenuTests: XCTestCase {
         XCTAssertEqual(kept, ["Burrata", "Grilled salmon, fennel"])
     }
 
+    func testSplitsThreeDishesTheCameraGluedTogether() {
+        let kept = MenuLineFilter.candidates(["Oysters 18 Mussels 16 Frites 7"])
+        XCTAssertEqual(kept, ["Oysters", "Mussels", "Frites"])
+    }
+
+    func testSplitsABlockThatContainsThreeLines() {
+        let lines = MenuLayout.lines(from: [
+            TextBlock(
+                text: "Oysters\nMussels\nFrites",
+                rect: CGRect(x: 0.1, y: 0.4, width: 0.5, height: 0.18)
+            )
+        ])
+        XCTAssertEqual(lines, ["Oysters", "Mussels", "Frites"])
+    }
+
+    func testKeepsNearbyRowsAsSeparateDishes() {
+        let lines = MenuLayout.lines(from: [
+            TextBlock(text: "Oysters", rect: CGRect(x: 0.1, y: 0.80, width: 0.4, height: 0.04)),
+            TextBlock(text: "Mussels", rect: CGRect(x: 0.1, y: 0.78, width: 0.4, height: 0.04)),
+            TextBlock(text: "Frites", rect: CGRect(x: 0.1, y: 0.76, width: 0.4, height: 0.04))
+        ])
+        XCTAssertEqual(lines, ["Oysters", "Mussels", "Frites"])
+    }
+
+    func testTitleUsesThePlaceNameThenTheDishes() {
+        let salmon = DishScore(name: "Salmon", protein: 2, fiber: 1, saturatedFat: 0.4, mollusk: 0, mushroom: 0)
+        let lamb = DishScore(name: "Lamb", protein: 2, fiber: 0.4, saturatedFat: 1, mollusk: 0, mushroom: 0)
+        XCTAssertEqual(
+            MenuTitle.suggest(from: ["Cafe de Reiger", "Starters", "Oysters 18"], dishes: [salmon], picks: [salmon]),
+            "Cafe de Reiger"
+        )
+        XCTAssertEqual(
+            MenuTitle.suggest(from: ["Starters", "Salmon"], dishes: [salmon, lamb], picks: [salmon, lamb]),
+            "Salmon and Lamb"
+        )
+    }
+
     func testDoesNotCollapseThePageIntoOneLine() {
         let blocks = (0..<5).map { index in
             TextBlock(

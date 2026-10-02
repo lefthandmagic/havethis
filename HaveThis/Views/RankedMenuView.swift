@@ -6,6 +6,9 @@ struct RankedMenuView: View {
     var timing: ScanTiming? = nil
     var preferences: DietPreferences = .open
     var busy: String? = nil
+    var menuTitle: String = "Menu"
+    var onRename: () -> Void = {}
+    var onRemove: () -> Void = {}
     var onAddPhoto: () -> Void = {}
 
     private let ink = HaveThisColor.ink
@@ -23,6 +26,16 @@ struct RankedMenuView: View {
         let shown = ranked
         return ScrollView {
             VStack(alignment: .leading, spacing: 22) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text(menuTitle)
+                        .font(.title2.weight(.bold))
+                        .foregroundStyle(ink)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 12)
+                    Button("Rename", action: onRename)
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(ink)
+                }
                 Text(createdAt.formatted(date: .abbreviated, time: .shortened))
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(ink.opacity(0.65))
@@ -113,12 +126,16 @@ struct RankedMenuView: View {
                 .tint(ink)
                 .disabled(busy != nil)
                 .padding(.top, 8)
+
+                Button("Remove this scan", role: .destructive, action: onRemove)
+                    .font(.body.weight(.semibold))
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(28)
         }
         .background(HaveThisColor.paper.ignoresSafeArea())
-        .navigationTitle("Menu")
+        .navigationTitle(menuTitle)
         .navigationBarTitleDisplayMode(.inline)
     }
 

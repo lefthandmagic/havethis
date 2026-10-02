@@ -82,7 +82,13 @@ final class OrderModel: ObservableObject {
             if let merging, let index = history.firstIndex(where: { $0.id == merging }) {
                 history[index].result = MenuMerge.combining(history[index].result, with: result)
             } else {
-                let search = MenuSearch(id: UUID(), createdAt: Date(), result: result, timing: timing)
+                let search = MenuSearch(
+                    id: UUID(),
+                    createdAt: Date(),
+                    result: result,
+                    timing: timing,
+                    title: MenuTitle.suggest(from: lines, dishes: result.dishes + result.skipped, picks: result.dishes)
+                )
                 history.insert(search, at: 0)
                 if history.count > 40 { history = Array(history.prefix(40)) }
                 path.append(search.id)
@@ -101,6 +107,20 @@ final class OrderModel: ObservableObject {
         phase = merging ? .idle : .failed(message)
         if merging { alertMessage = message }
     }
+
+    func rename(_ id: UUID, to name: String) {
+        guard let index = history.firstIndex(where: { $0.id == id }) else { return }
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        history[index].title = trimmed
+        MenuHistory.save(history)
+    }
+
+    func remove(_ id: UUID, pop: Bool) {
+        history.removeAll { $0.id == id }
+        MenuHistory.save(history)
+        if pop, !path.isEmpty { path.removeLast() }
+    }
 }
 
 struct WorkStatus: Equatable {
@@ -118,6 +138,8 @@ struct OrderView: View {
     @State private var showSettings = false
     @State private var showPaywall = false
     @State private var addPhoto = false
+    @State private var renameTarget: UUID?
+    @State private var renameDraft = ""
 
     private var paper: Color { HaveThisColor.paper }
     private var ink: Color { HaveThisColor.ink }
@@ -144,7 +166,10 @@ struct OrderView: View {
                         createdAt: search.createdAt,
                         timing: search.timing,
                         preferences: model.diet,
-                        busy: workingTitle
+                        busy: workingTitle,
+                        menuTitle: search.displayTitle,
+                        onRename: { beginRename(search) },
+                        onRemove: { model.remove(search.id, pop: true) }
                     ) {
                         guard model.scanPass.canScan else {
                             showPaywall = true
@@ -177,6 +202,13 @@ struct OrderView: View {
                     showPaywall = true
                     model.requestPaywall = false
                 }
+            }
+            .alert("Name this menu", isPresented: renamePresented) {
+                TextField("Name", text: $renameDraft)
+                Button("Save") {
+                    if let id = renameTarget { model.rename(id, to: renameDraft) }
+                }
+                Button("Cancel", role: .cancel) {}
             }
             .alert("Couldn't score that photo", isPresented: alertShown) {
                 Button("OK", role: .cancel) {}
@@ -237,31 +269,27 @@ struct OrderView: View {
                         .font(.body)
                         .foregroundStyle(ink.opacity(0.7))
                 } else {
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: 16) {
-                            ForEach(model.history) { search in
-                                Button {
-                                    model.path.append(search.id)
-                                } label: {
-                                    VStack(alignment: .leading, spacing: 4) {
-                                        Text(search.title)
-                                            .font(.body.weight(.semibold))
-                                            .foregroundStyle(ink)
-                                            .multilineTextAlignment(.leading)
-                                            .lineLimit(2)
-                                        Text(search.createdAt.formatted(date: .abbreviated, time: .shortened))
-                                            .font(.subheadline)
-                                            .foregroundStyle(ink.opacity(0.65))
-                                        Text("\(search.result.dishes.count) ranked")
-                                            .font(.subheadline)
-                                            .foregroundStyle(ink.opacity(0.65))
-                                    }
-                                    .frame(maxWidth: .infinity, alignment: .leading)
+                    List {
+                        ForEach(model.history) { search in
+                            scanRow(search)
+                                .contentShape(Rectangle())
+                                .onTapGesture { model.path.append(search.id) }
+                                .listRowInsets(EdgeInsets(top: 14, leading: 0, bottom: 14, trailing: 0))
+                                .listRowSeparator(.hidden)
+                                .listRowBackground(paper)
+                                .contextMenu {
+                                    Button("Rename") { beginRename(search) }
+                                    Button("Remove", role: .destructive) { model.remove(search.id, pop: false) }
                                 }
-                                .buttonStyle(.plain)
-                            }
+                                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                    Button("Remove", role: .destructive) { model.remove(search.id, pop: false) }
+                                }
                         }
                     }
+                    .listStyle(.plain)
+                    .scrollIndicators(.hidden)
+                    .scrollContentBackground(.hidden)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -350,6 +378,38 @@ struct OrderView: View {
             .buttonStyle(.bordered)
             .tint(ink)
         }
+    }
+
+    private func scanRow(_ search: MenuSearch) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(search.displayTitle)
+                .font(.title3.weight(.bold))
+                .foregroundStyle(ink)
+                .multilineTextAlignment(.leading)
+                .lineLimit(2)
+            if let pick = search.result.dishes.first {
+                Text("\(pick.name) · \(pick.scoreLabel)")
+                    .font(.body)
+                    .foregroundStyle(ink.opacity(0.8))
+                    .lineLimit(1)
+            }
+            Text(search.createdAt.formatted(date: .abbreviated, time: .shortened))
+                .font(.subheadline)
+                .foregroundStyle(ink.opacity(0.55))
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func beginRename(_ search: MenuSearch) {
+        renameDraft = search.displayTitle
+        renameTarget = search.id
+    }
+
+    private var renamePresented: Binding<Bool> {
+        Binding(
+            get: { renameTarget != nil },
+            set: { if !$0 { renameTarget = nil } }
+        )
     }
 
     private var workingTitle: String? {

@@ -17,6 +17,9 @@ Updated 3 Oct 2026. Knock a line to done when it lands.
 - [x] Support link in Settings.
 - [x] Distinct failures: no dishes, missing key, no connection, scoring down, scoring failed, empty allowance. A merge that fails stays on the ranked screen and shows the reason.
 - [x] Scoring screen: one **Have this** pick, two backups, each with a score out of 10, a one-line reason, and Low / Moderate / High for protein, fiber, and saturated fat. The rest of the menu shows the score only.
+- [x] Home shows each scan by name and the top dish. No “ranked” count, no visible scrollbar. Swipe or long-press to remove. Rename on the home row and on the menu.
+- [x] A scan is named from a place on the page when one is there, otherwise from the two best dishes.
+- [x] Lines that glued several priced dishes, or several lines in one camera block, are split before scoring.
 
 ## Still open
 

@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		05F8AA47A9AD3036DA00C2A7 /* MenuTitle.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBC7EE90B92F19E42033DD49 /* MenuTitle.swift */; };
 		0D9BC36A161B6E3060D3351C /* MenuTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 62DF8BE3C6205C522B572FE8 /* MenuTests.swift */; };
 		30822A705592303B7BF6B75E /* JevClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4BC08F29FD48465BF28CF512 /* JevClient.swift */; };
 		33400AF2540EF6CA4961D2CE /* PhotosUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 9B316BDB1D956BA8736AD8C7 /* PhotosUI.framework */; };
@@ -62,6 +63,7 @@
 		AD760ED78AE354CB93CE85A9 /* ScanPass.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScanPass.swift; sourceTree = "<group>"; };
 		BED1FFF949B8C2BD1D16EC12 /* RankedMenuView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RankedMenuView.swift; sourceTree = "<group>"; };
 		BFF8F385E89DD8D6F81C3316 /* HaveThisApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HaveThisApp.swift; sourceTree = "<group>"; };
+		DBC7EE90B92F19E42033DD49 /* MenuTitle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuTitle.swift; sourceTree = "<group>"; };
 		E049DCEC1A23CEEF5161559B /* DishScore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DishScore.swift; sourceTree = "<group>"; };
 		F04CA4D42D4BF56649AA967F /* HaveThisTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = HaveThisTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		FBFD9D9E3364BF123F25BF64 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -97,6 +99,7 @@
 				805924485486A8DCEEF7D974 /* MenuLayout.swift */,
 				8F6B90928E92A1835A120F64 /* MenuLineFilter.swift */,
 				A6CB00F8A09A1747494386BE /* MenuScanner.swift */,
+				DBC7EE90B92F19E42033DD49 /* MenuTitle.swift */,
 				6E431617B8C180329E305960 /* OrderEngine.swift */,
 				5320D3BF7A6DDDAE5975E3DC /* OrderRanking.swift */,
 				7B24EFC634D7F5847B08EFD0 /* ScanAllowance.swift */,
@@ -282,6 +285,7 @@
 				7346AE0DFFA5264ABF5682E0 /* MenuLayout.swift in Sources */,
 				3AD890202FD85B84C805E2DF /* MenuLineFilter.swift in Sources */,
 				4E23FE0AA907D8E44EAF6C38 /* MenuScanner.swift in Sources */,
+				05F8AA47A9AD3036DA00C2A7 /* MenuTitle.swift in Sources */,
 				3DAD99F519FC1163BEDEC034 /* OrderEngine.swift in Sources */,
 				790353C4FFC32EDD669C2EE1 /* OrderRanking.swift in Sources */,
 				EA3B1E68B6E7F0AE0ABBD1D1 /* OrderView.swift in Sources */,
