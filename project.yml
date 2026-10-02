@@ -13,7 +13,9 @@ targets:
     platform: iOS
     deploymentTarget: "17.0"
     sources:
-      - HaveThis
+      - path: HaveThis
+        excludes:
+          - Resources/HaveThis.storekit
     info:
       path: HaveThis/Resources/Info.plist
       properties:
@@ -61,6 +63,7 @@ schemes:
         HaveThisTests: [test]
     run:
       config: Debug
+      storeKitConfiguration: HaveThis/Resources/HaveThis.storekit
     test:
       config: Debug
       targets:

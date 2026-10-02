@@ -39,9 +39,10 @@ struct JevClient {
     func scoreDishes(
         _ names: [String],
         progress: (@Sendable (JevProgress) -> Void)? = nil
-    ) async throws -> (scores: [DishScore], stats: JevCallStats) {
+    ) async throws -> (scores: [DishScore], stats: JevCallStats, unscored: Int) {
         let capped = Array(names.prefix(20))
-        guard !capped.isEmpty else { return ([], JevCallStats()) }
+        let unscored = max(0, names.count - capped.count)
+        guard !capped.isEmpty else { return ([], JevCallStats(), unscored) }
 
         var questions: [String: Any] = [:]
         for (index, name) in capped.enumerated() {
@@ -83,7 +84,8 @@ struct JevClient {
                 mushroom: answers["\(index)_mushroom"]?.noul ?? 0
             )
         },
-            stats
+            stats,
+            unscored
         )
     }
 
@@ -217,6 +219,9 @@ struct JevClient {
                 try await Task.sleep(nanoseconds: 2_000_000_000)
                 return try await send(request, allowRetry: false)
             }
+            if http.statusCode == 429 || http.statusCode == 529 || http.statusCode >= 500 {
+                throw OrderError.jevDown
+            }
             if !(200..<300).contains(http.statusCode) {
                 throw OrderError.provider(Self.serverMessage(in: data) ?? OrderError.scoringFailed.localizedDescription)
             }
@@ -226,6 +231,13 @@ struct JevClient {
             return data
         } catch let error as OrderError {
             throw error
+        } catch let error as URLError {
+            switch error.code {
+            case .notConnectedToInternet, .networkConnectionLost, .dataNotAllowed, .timedOut, .cannotFindHost, .cannotConnectToHost:
+                throw OrderError.offline
+            default:
+                throw OrderError.scoringFailed
+            }
         } catch {
             throw OrderError.scoringFailed
         }

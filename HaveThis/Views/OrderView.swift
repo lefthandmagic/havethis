@@ -14,9 +14,17 @@ final class OrderModel: ObservableObject {
     @Published var source: MenuImageSource?
     @Published var history: [MenuSearch]
     @Published var path = NavigationPath()
+    @Published var diet: DietPreferences
+    @Published var alertMessage: String?
+    @Published var requestPaywall = false
+    /// When set, the next photo is added to this scan instead of starting a new one.
+    var mergingInto: UUID?
+
+    let scanPass = ScanPass()
 
     init() {
         history = MenuHistory.load()
+        diet = DietPreferences.load()
     }
 
     var cameraAvailable: Bool {
@@ -24,6 +32,12 @@ final class OrderModel: ObservableObject {
     }
 
     func analyze(_ image: UIImage) async {
+        if !scanPass.canScan {
+            requestPaywall = true
+            return
+        }
+        let merging = mergingInto
+        mergingInto = nil
         let photoStarted = Date()
         phase = .working(WorkStatus(
             title: "Reading the menu",
@@ -39,14 +53,14 @@ final class OrderModel: ObservableObject {
             let photoSeconds = Date().timeIntervalSince(photoStarted)
             phase = .working(WorkStatus(
                 title: "Finding dishes",
-                detail: "Sending the menu to Jev",
+                detail: "Checking which lines are dishes",
                 photoSeconds: photoSeconds,
                 photoStarted: nil,
                 jevSeconds: 0,
                 serverSeconds: 0,
                 jevStarted: Date()
             ))
-            let (result, stats) = try await OrderEngine.order(from: lines) { update in
+            let (result, stats) = try await OrderEngine.order(from: lines, preferences: diet) { update in
                 Task { @MainActor in
                     self.phase = .working(WorkStatus(
                         title: update.title,
@@ -65,17 +79,27 @@ final class OrderModel: ObservableObject {
                 serverSeconds: stats.server,
                 calls: stats.calls
             )
-            let search = MenuSearch(id: UUID(), createdAt: Date(), result: result, timing: timing)
-            history.insert(search, at: 0)
-            if history.count > 40 { history = Array(history.prefix(40)) }
+            if let merging, let index = history.firstIndex(where: { $0.id == merging }) {
+                history[index].result = MenuMerge.combining(history[index].result, with: result)
+            } else {
+                let search = MenuSearch(id: UUID(), createdAt: Date(), result: result, timing: timing)
+                history.insert(search, at: 0)
+                if history.count > 40 { history = Array(history.prefix(40)) }
+                path.append(search.id)
+            }
             MenuHistory.save(history)
+            scanPass.consumeSuccessfulScan()
             phase = .idle
-            path.append(search.id)
         } catch let error as OrderError {
-            phase = .failed(error.localizedDescription)
+            fail(error.localizedDescription, merging: merging != nil)
         } catch {
-            phase = .failed(OrderError.scoringFailed.localizedDescription)
+            fail(OrderError.scoringFailed.localizedDescription, merging: merging != nil)
         }
+    }
+
+    private func fail(_ message: String, merging: Bool) {
+        phase = merging ? .idle : .failed(message)
+        if merging { alertMessage = message }
     }
 }
 
@@ -91,6 +115,9 @@ struct WorkStatus: Equatable {
 
 struct OrderView: View {
     @StateObject private var model = OrderModel()
+    @State private var showSettings = false
+    @State private var showPaywall = false
+    @State private var addPhoto = false
 
     private var paper: Color { HaveThisColor.paper }
     private var ink: Color { HaveThisColor.ink }
@@ -112,8 +139,49 @@ struct OrderView: View {
             .toolbar(.hidden, for: .navigationBar)
             .navigationDestination(for: UUID.self) { id in
                 if let search = model.history.first(where: { $0.id == id }) {
-                    RankedMenuView(result: search.result, createdAt: search.createdAt, timing: search.timing)
+                    RankedMenuView(
+                        result: search.result,
+                        createdAt: search.createdAt,
+                        timing: search.timing,
+                        preferences: model.diet,
+                        busy: workingTitle
+                    ) {
+                        guard model.scanPass.canScan else {
+                            showPaywall = true
+                            return
+                        }
+                        model.mergingInto = id
+                        addPhoto = true
+                    }
                 }
+            }
+            .sheet(isPresented: $showSettings) {
+                SettingsView(diet: $model.diet, pass: model.scanPass) {
+                    showSettings = false
+                }
+            }
+            .sheet(isPresented: $showPaywall) {
+                PaywallView(pass: model.scanPass) {
+                    showPaywall = false
+                }
+            }
+            .confirmationDialog("Add to this menu", isPresented: $addPhoto, titleVisibility: .visible) {
+                if model.cameraAvailable {
+                    Button("Take a photo") { model.source = .camera }
+                }
+                Button("Choose a photo") { model.source = .library }
+                Button("Cancel", role: .cancel) { model.mergingInto = nil }
+            }
+            .onChange(of: model.requestPaywall) { _, requested in
+                if requested {
+                    showPaywall = true
+                    model.requestPaywall = false
+                }
+            }
+            .alert("Couldn't score that photo", isPresented: alertShown) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(model.alertMessage ?? "")
             }
         }
         .fullScreenCover(item: $model.source) { source in
@@ -131,7 +199,10 @@ struct OrderView: View {
                     model.source = nil
                     Task { await model.analyze(image) }
                 },
-                onCancel: { model.source = nil }
+                onCancel: {
+                    model.source = nil
+                    model.mergingInto = nil
+                }
             )
         case .library:
             LibraryPicker(
@@ -139,7 +210,10 @@ struct OrderView: View {
                     model.source = nil
                     Task { await model.analyze(image) }
                 },
-                onCancel: { model.source = nil }
+                onCancel: {
+                    model.source = nil
+                    model.mergingInto = nil
+                }
             )
         }
     }
@@ -149,9 +223,15 @@ struct OrderView: View {
         switch model.phase {
         case .idle:
             VStack(alignment: .leading, spacing: 18) {
-                Text("HaveThis")
-                    .font(.system(size: 40, weight: .bold))
-                    .foregroundStyle(ink)
+                HStack(alignment: .firstTextBaseline) {
+                    Text("HaveThis")
+                        .font(.system(size: 40, weight: .bold))
+                        .foregroundStyle(ink)
+                    Spacer()
+                    Button("Settings") { showSettings = true }
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(ink)
+                }
                 if model.history.isEmpty {
                     Text("Take a photo of a menu, or choose one from your library.")
                         .font(.body)
@@ -198,8 +278,10 @@ struct OrderView: View {
     }
 
     private func workingStatus(_ status: WorkStatus, now: Date) -> some View {
+        #if DEBUG
         let photo = status.photoSeconds ?? status.photoStarted.map { now.timeIntervalSince($0) } ?? 0
         let jev = status.jevSeconds + (status.jevStarted.map { now.timeIntervalSince($0) } ?? 0)
+        #endif
         return VStack(alignment: .leading, spacing: 22) {
             ProgressView()
                 .tint(ink)
@@ -211,6 +293,7 @@ struct OrderView: View {
                     .font(.body)
                     .foregroundStyle(ink.opacity(0.7))
             }
+            #if DEBUG
             VStack(alignment: .leading, spacing: 8) {
                 clockRow("Photo", ScanTiming.clock(photo))
                 clockRow("Jev", status.photoSeconds == nil ? "—" : ScanTiming.clock(jev))
@@ -222,6 +305,9 @@ struct OrderView: View {
                 .font(.footnote)
                 .foregroundStyle(ink.opacity(0.55))
                 .fixedSize(horizontal: false, vertical: true)
+            #else
+            EmptyView()
+            #endif
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -243,7 +329,7 @@ struct OrderView: View {
         VStack(spacing: 12) {
             if model.cameraAvailable {
                 Button {
-                    model.source = .camera
+                    startScan(.camera)
                 } label: {
                     Text("Take a photo")
                         .font(.headline)
@@ -254,7 +340,7 @@ struct OrderView: View {
                 .tint(ink)
             }
             Button {
-                model.source = .library
+                startScan(.library)
             } label: {
                 Text("Choose a photo")
                     .font(.headline)
@@ -264,6 +350,27 @@ struct OrderView: View {
             .buttonStyle(.bordered)
             .tint(ink)
         }
+    }
+
+    private var workingTitle: String? {
+        if case .working(let status) = model.phase { return status.title }
+        return nil
+    }
+
+    private var alertShown: Binding<Bool> {
+        Binding(
+            get: { model.alertMessage != nil },
+            set: { if !$0 { model.alertMessage = nil } }
+        )
+    }
+
+    private func startScan(_ source: MenuImageSource) {
+        guard model.scanPass.canScan else {
+            showPaywall = true
+            return
+        }
+        model.mergingInto = nil
+        model.source = source
     }
 }
 

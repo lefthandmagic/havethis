@@ -8,9 +8,25 @@ struct DishScore: Equatable, Codable {
     var mollusk: Double
     var mushroom: Double
 
-    /// Higher is a better plate: protein and fiber up, saturated fat down.
+    /// Higher is a better plate: protein and fiber up, saturated fat down. Each part is 0–2, so the total is 0–6.
     var rank: Double {
         protein + fiber + (2 - saturatedFat)
+    }
+
+    /// Same three facts, shown as a single mark out of 10.
+    var scoreOutOfTen: Double {
+        let clamped = min(6, max(0, rank))
+        return (clamped / 6) * 10
+    }
+
+    var scoreLabel: String {
+        String(format: "%.1f", scoreOutOfTen)
+    }
+
+    /// One sentence a person can read, built from the three factor labels.
+    var reason: String {
+        let sentence = "\(Self.phrase(Self.band(protein), "protein")), \(Self.phrase(Self.band(fiber), "fiber")), \(Self.fatPhrase(Self.band(saturatedFat)))."
+        return sentence.prefix(1).uppercased() + sentence.dropFirst()
     }
 
     var blocked: Bool {
@@ -38,11 +54,53 @@ struct DishScore: Equatable, Codable {
     static func number(_ value: Double) -> String {
         String(format: "%.1f", value)
     }
+
+    private static func phrase(_ band: String, _ noun: String) -> String {
+        switch band {
+        case "High": return "high \(noun)"
+        case "Low": return "low \(noun)"
+        default: return "moderate \(noun)"
+        }
+    }
+
+    private static func fatPhrase(_ band: String) -> String {
+        switch band {
+        case "High": return "higher saturated fat"
+        case "Low": return "lower saturated fat"
+        default: return "moderate saturated fat"
+        }
+    }
 }
 
 struct OrderResult: Equatable, Codable {
     var dishes: [DishScore]
     var skipped: [DishScore]
+    /// Dishes on this photo that were past the scoring cap.
+    var unscored: Int
+
+    init(dishes: [DishScore], skipped: [DishScore], unscored: Int = 0) {
+        self.dishes = dishes
+        self.skipped = skipped
+        self.unscored = unscored
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        dishes = try container.decode([DishScore].self, forKey: .dishes)
+        skipped = try container.decode([DishScore].self, forKey: .skipped)
+        unscored = try container.decodeIfPresent(Int.self, forKey: .unscored) ?? 0
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(dishes, forKey: .dishes)
+        try container.encode(skipped, forKey: .skipped)
+        try container.encode(unscored, forKey: .unscored)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case dishes, skipped, unscored
+    }
 }
 
 enum OrderError: LocalizedError {
@@ -50,6 +108,9 @@ enum OrderError: LocalizedError {
     case noDishes
     case allBlocked
     case missingKey
+    case offline
+    case jevDown
+    case noScans
     case scoringFailed
     case provider(String)
 
@@ -63,8 +124,14 @@ enum OrderError: LocalizedError {
             return "What's left looks like mollusks or mushrooms. Try another photo."
         case .missingKey:
             return "This build is missing the scoring key."
+        case .offline:
+            return "No connection. The photo stayed on the phone. Try again when you're online."
+        case .jevDown:
+            return "Scoring is down right now. Nothing was used from your scans. Try again."
+        case .noScans:
+            return "No scans left. HaveThis Plus includes 30 a month, or you can add a pack of 10."
         case .scoringFailed:
-            return "Scoring failed. Check the connection and try again."
+            return "Scoring failed. Nothing was used from your scans. Try again."
         case .provider(let message):
             return message
         }

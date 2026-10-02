@@ -1,0 +1,95 @@
+{
+  "identifier" : "HaveThis",
+  "nonRenewingSubscriptions" : [
+
+  ],
+  "products" : [
+    {
+      "displayPrice" : "2.99",
+      "familyShareable" : false,
+      "internalID" : "scans10",
+      "localizations" : [
+        {
+          "description" : "Ten more menu scans.",
+          "displayName" : "10 scans",
+          "locale" : "en_US"
+        }
+      ],
+      "productID" : "com.praveenmurugesan.HaveThis.scans.10",
+      "referenceName" : "10 scans",
+      "type" : "Consumable"
+    }
+  ],
+  "settings" : {
+    "_applicationInternalID" : "6816363309",
+    "_failTransactionsEnabled" : false,
+    "_storeKitErrors" : [
+
+    ]
+  },
+  "subscriptionGroups" : [
+    {
+      "id" : "plus",
+      "localizations" : [
+
+      ],
+      "name" : "HaveThis Plus",
+      "subscriptions" : [
+        {
+          "adHocOffers" : [
+
+          ],
+          "codeOffers" : [
+
+          ],
+          "displayPrice" : "6.99",
+          "familyShareable" : false,
+          "groupNumber" : 1,
+          "internalID" : "plusmonthly",
+          "introductoryOffer" : null,
+          "localizations" : [
+            {
+              "description" : "30 menu scans a month.",
+              "displayName" : "HaveThis Plus",
+              "locale" : "en_US"
+            }
+          ],
+          "productID" : "com.praveenmurugesan.HaveThis.plus.monthly",
+          "recurringSubscriptionPeriod" : "P1M",
+          "referenceName" : "Plus monthly",
+          "subscriptionGroupID" : "plus",
+          "type" : "RecurringSubscription"
+        },
+        {
+          "adHocOffers" : [
+
+          ],
+          "codeOffers" : [
+
+          ],
+          "displayPrice" : "49.99",
+          "familyShareable" : false,
+          "groupNumber" : 1,
+          "internalID" : "plusyearly",
+          "introductoryOffer" : null,
+          "localizations" : [
+            {
+              "description" : "30 menu scans a month, billed yearly.",
+              "displayName" : "HaveThis Plus yearly",
+              "locale" : "en_US"
+            }
+          ],
+          "productID" : "com.praveenmurugesan.HaveThis.plus.yearly",
+          "recurringSubscriptionPeriod" : "P1Y",
+          "referenceName" : "Plus yearly",
+          "subscriptionGroupID" : "plus",
+          "type" : "RecurringSubscription"
+        }
+      ]
+    }
+  ],
+  "version" : {
+    "major" : 3,
+    "minor" : 0
+  }
+}
